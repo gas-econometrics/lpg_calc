@@ -57,7 +57,7 @@ table { border-collapse: collapse; width: 100%; }
 .slots select.dm { width: 175px; }
 .slots input[type=number] { width: 72px; }
 .slots td { padding: 6px 5px; }
-.slots input.idin { width: 128px; }
+.slots input.idin { width: 110px; }
 .slots .sid { color: var(--muted); font-size: 11px; margin-top: 2px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slots .bad { color: var(--warn); font-size: 11.5px; margin-top: 2px; }
 .slots .desc { color: var(--muted); font-size: 11.5px; margin-top: 3px; max-width: 260px; }
@@ -131,7 +131,7 @@ footer p { margin: 0 0 4px; }
   <div class="card">
     <h2>Котировки в формуле</h2>
     <div class="scroll"><table class="slots">
-      <thead><tr><th></th><th>ID котировки</th><th>Источник</th><th>Тип</th><th>Продукт</th><th>Пункт / котировка</th><th>Вес</th><th>Дифф.</th><th>Вручную,<br>юаней/т</th><th style="text-align:right">Дифф. в формуле,<br>юаней/т</th></tr></thead>
+      <thead><tr><th></th><th>Источник</th><th>Тип</th><th>Продукт</th><th>Пункт / котировка</th><th>ID SCI</th><th>Вес</th><th>Дифф.</th><th>Вручную,<br>юаней/т</th><th style="text-align:right">Дифф. в формуле,<br>юаней/т</th></tr></thead>
       <tbody id="slots"></tbody>
     </table></div>
     <div class="sum" id="wsum"></div>
@@ -167,7 +167,7 @@ footer p { margin: 0 0 4px; }
     </div>
   </section>
   <footer id="foot"></footer>
-<datalist id="ids"></datalist>
+
 </div>
 <noscript><p style="padding:20px">Откройте файл в браузере на компьютере (Chrome, Edge, Firefox): расчет работает на JavaScript.</p></noscript>
 <script>
@@ -278,11 +278,12 @@ function drawSlots(res) {
     const needMan = s.dm === 'man' || s.dm === 'trman';
     const dtxt = !(s.w > 0) ? '—' : (x.diff == null ? (c.tp ? 'нет данных' : 'нет пункта для транспорта') : fmt(x.diff));
     return `<tr><td data-l="" class="n">${i + 1}</td>
-      <td data-l="ID котировки"><input type="text" class="idin" list="ids" data-i="${i}" data-k="idin" value="${x.id || ''}" title="ID: номер серии SCI (например, 19411), наш ID из справочника или название листа выгрузки Oilchem"><div class="sid">${c.sid && c.sid !== x.id ? 'в источнике: ' + c.sid : ''}</div>${s.badid ? `<div class="bad">ID «${s.badid}» не найден</div>` : ''}</td>
       <td data-l="Источник"><select data-i="${i}" data-k="src">${opt(SRC, s.src)}</select></td>
       <td data-l="Тип"><select data-i="${i}" data-k="typ">${opt(typs, s.typ)}</select></td>
       <td data-l="Продукт"><select data-i="${i}" data-k="prod">${opt(prds, s.prod)}</select></td>
       <td data-l="Пункт / котировка"><select class="pt" data-i="${i}" data-k="point" title="${(c.desc || '').replace(/"/g, '&quot;')}">${opt(pointsFor(s), s.point)}</select></td>
+      <td data-l="ID SCI"><input type="text" class="idin" list="ids${i}" data-i="${i}" data-k="idin" placeholder="номер SCI" value="${c.src === 'SCI' && /^\d+$/.test(x.id) ? x.id : ''}" title="Номер серии SCI, например 19411. Подсказки — по выбранному продукту.">
+        <datalist id="ids${i}">${CAT.filter(q => q.src === 'SCI' && /^\d+$/.test(q.id) && q.prod === s.prod).map(q => `<option value="${q.id}">${q.typ}, ${q.prod}, ${q.point}</option>`).join('')}</datalist>${s.badid ? `<div class="bad">ID «${s.badid}» не найден</div>` : ''}</td>
       <td data-l="Вес"><input type="number" class="small" step="0.05" min="0" max="1" data-i="${i}" data-k="w" value="${s.w}"></td>
       <td data-l="Дифф."><select class="dm" data-i="${i}" data-k="dm">${DM.map(([v, t]) => `<option value="${v}"${v === s.dm ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
       <td data-l="Вручную, юаней/т">${needMan ? `<input type="number" step="10" data-i="${i}" data-k="man" value="${s.man}">` : '<span class="hint">—</span>'}</td>
@@ -293,7 +294,7 @@ function drawSlots(res) {
     el.addEventListener(ev, () => {
       const s = state.slots[+el.dataset.i], k = el.dataset.k;
       if (k === 'idin') {
-        const v = el.value.trim(), c = CAT.find(c => c.id === v || c.sid === v || c.id.toLowerCase() === v.toLowerCase());
+        const v = el.value.trim(), c = CAT.find(c => c.src === 'SCI' && c.id === v);
         if (c) { s.src = c.src; s.typ = c.typ; s.prod = c.prod; s.point = c.point; delete s.badid; } else if (v) s.badid = v; else delete s.badid;
         render(); return;
       }
@@ -390,10 +391,8 @@ function render() {
   $('dshv').textContent = fmt(state.dshare * 100) + '%';
   drawChart(res); drawTable(res); drawCmp();
 }
-$('ids').innerHTML = CAT.map(c => `<option value="${c.id}">${c.src} ${c.typ}, ${c.prod}, ${c.point}${c.sid && c.sid !== c.id && !c.sid.startsWith('среднее') ? ' — ' + c.sid : ''}</option>`).join('')
-;
 $('foot').innerHTML = `<p>Данные — те же, что в файле «Форма расчета цены СУГ DAP-FCA 2026»: средние за месяц котировки Oilchem и SCI (юаней/т с НДС), AFEI ($/т CFR), курс, ставки экспортной пошлины РФ, транспорт от Хэйхэ (базовый тариф, как в карте нетбэков). ${DATA.note}</p>
-<p>Дифф. «Транспорт» — средняя за 2026 год стоимость автоперевозки от границы до пункта котировки (с НДС и перевалкой). Для AFEI пункта нет — дифф. вводится вручную. Котировку можно выбрать и по ID: наш ID из справочника Excel или ID источника (номер серии SCI или название листа выгрузки Oilchem). Экспортная пошлина: пропан и LPG — ставка СПБТ, бутан — ставка бутана, взвешенно по весам.</p>`;
+<p>Дифф. «Транспорт» — средняя за 2026 год стоимость автоперевозки от границы до пункта котировки (с НДС и перевалкой). Для AFEI пункта нет — дифф. вводится вручную. Котировки SCI можно выбрать и по номеру ID (например, 19411): источник, тип, продукт и пункт заполнятся сами. Экспортная пошлина: пропан и LPG — ставка СПБТ, бутан — ставка бутана, взвешенно по весам.</p>`;
 render();
 </script>
 </body>
