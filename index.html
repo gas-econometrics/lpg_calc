@@ -108,6 +108,9 @@ details.more summary { color: var(--blue-d); font-size: 14px; font-weight: 600; 
 .rev .r { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 11px 0; border-bottom: 1px solid var(--grid); }
 .rev .r:last-child { border-bottom: 0; }
 .rev .r .n { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.hint.fn { margin-top: 8px; font-size: 12px; line-height: 1.4; }
+.vlist .ck { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink2); margin-top: 6px; cursor: pointer; }
+.vlist .ck input { width: 16px; height: 16px; accent-color: var(--blue); }
 .mv { display: inline-flex; gap: 3px; flex: none; }
 .mv button, .vlist .btns button[data-up], .vlist .btns button[data-dn] { border: 0; background: var(--blue-l); color: var(--blue-d); border-radius: 7px; width: 28px; height: 28px; padding: 0; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .mv button:disabled, .vlist .btns button:disabled { opacity: .35; cursor: default; }
@@ -167,6 +170,7 @@ footer p { margin: 0 0 4px; }
       <h2 id="restitle">Результат</h2>
       <div class="kpis" id="kpis"></div>
       <svg class="chart" id="chart" viewBox="0 0 760 260" role="img" aria-label="Цена по месяцам"></svg>
+      <div class="hint fn">* Экспортная пошлина РФ вычитается помесячно — ставка своего месяца (пропан — ставка на СПБТ, бутан — 90% от нее); в месяцы с нулевой ставкой цена за вычетом пошлины равна цене. Среднее — по месяцам, где есть и цена, и ставка.</div>
       <details class="more"><summary>Таблица по месяцам</summary><div class="scroll"><table class="mt" id="mt"></table></div></details>
       <div class="save"><input type="text" id="vname" placeholder="Название, например «SCI 50/50»"><button class="act" id="savebtn">Сохранить для сравнения</button></div>
       <div class="hint" id="savedmsg" style="margin-top:6px"></div>
@@ -179,6 +183,8 @@ footer p { margin: 0 0 4px; }
       <h2 id="cmptitle">Варианты</h2>
       <div class="vlist" id="vlist"></div>
       <div class="hint" id="cmphint" style="margin-top:8px"></div>
+      <div class="hint fn">* Экспортная пошлина РФ вычитается помесячно — ставка своего месяца (пропан — ставка на СПБТ, бутан — 90% от нее); в месяцы с нулевой ставкой цена за вычетом пошлины равна цене. Среднее — по месяцам, где есть и цена, и ставка.</div>
+      <div class="save"><button class="act" id="expbtn">Скачать сравнение для Excel</button><span class="hint" id="expmsg">В файл попадут отмеченные варианты: средние, разница с первым и цены по месяцам.</span></div>
     </div>
     <div class="card">
       <h2>Цена по месяцам, $/т</h2>
@@ -199,6 +205,7 @@ footer p { margin: 0 0 4px; }
       <h2 id="revtitle">Выручка</h2>
       <div class="rev" id="revlist"></div>
       <div class="hint" id="revnote" style="margin-top:8px"></div>
+      <div class="hint fn">* Выручка за вычетом пошлины — по каждому месяцу объем × (цена − ставка экспортной пошлины РФ этого месяца: пропан — ставка на СПБТ, бутан — 90% от нее). В месяцы с нулевой ставкой вычитать нечего.</div>
     </div>
   </section>
   <footer id="foot"></footer>
@@ -380,10 +387,10 @@ function lineChart(svgId, legId, series, W, H) {
 function drawResult(res) {
   const lm = res.last >= 0 ? MS[res.last].toLowerCase() : '';
   $('restitle').textContent = `${PC[state.prod]}: цена ${state.dtype}, 2026`;
-  $('kpis').innerHTML = [['Средняя цена', fmt(res.avg.usd, 1), `$/т · ${res.n} мес.`], [`Последний месяц (${lm})`, res.last >= 0 ? fmt(res.rows[res.last].usd, 1) : '—', res.last === 10 ? '$/т · данные за месяц неполные' : '$/т'], ['Без экспортной пошлины', fmt(res.avg.net, 1), '$/т, среднее']]
+  $('kpis').innerHTML = [['Средняя цена', fmt(res.avg.usd, 1), `$/т · ${res.n} мес.`], [`Последний месяц (${lm})`, res.last >= 0 ? fmt(res.rows[res.last].usd, 1) : '—', res.last === 10 ? '$/т · данные за месяц неполные' : '$/т'], ['За вычетом экспортной пошлины РФ*', fmt(res.avg.net, 1), '$/т, среднее — остается продавцу']]
     .map(([t, v, u]) => `<div class="kpi"><div class="t">${t}</div><div class="v">${v}</div><div class="u">${u}</div></div>`).join('');
   lineChart('chart', null, [{ name: PC[state.prod], v: res.rows.map(r => r.usd), c: '#0070C0', w: 3, area: true }], 760, 260);
-  let h = '<tr><th>Месяц</th><th>юаней/т</th><th>$/т</th><th>Пошлина, $/т</th><th>Без пошлины, $/т</th></tr>';
+  let h = '<tr><th>Месяц</th><th>юаней/т</th><th>$/т</th><th>Эксп. пошлина РФ, $/т</th><th>За вычетом пошлины, $/т</th></tr>';
   res.rows.forEach((r, i) => h += `<tr><td>${MS[i]}</td><td>${fmt(r.cny)}</td><td class="b">${fmt(r.usd, 1)}</td><td>${fmt(r.dut, 1)}</td><td>${fmt(r.net, 1)}</td></tr>`);
   $('mt').innerHTML = h + `<tr class="avg"><td>Среднее</td><td>${fmt(res.avg.cny)}</td><td>${fmt(res.avg.usd, 1)}</td><td></td><td>${fmt(res.avg.net, 1)}</td></tr>`;
 }
@@ -402,6 +409,36 @@ function moveVar(i, dir) {
   const p = saved[i].state.prod, idx = saved.map((v, k) => k).filter(k => saved[k].state.prod === p), pos = idx.indexOf(i), j = idx[pos + dir];
   if (j == null) return; [saved[i], saved[j]] = [saved[j], saved[i]]; persist();
 }
+function exportCmp() {
+  const idx = saved.map((v, i) => i).filter(i => saved[i].state.prod === cprod && !saved[i].noexp);
+  if (!idx.length) { $('expmsg').textContent = 'Отметьте хотя бы один вариант «в выгрузку».'; return; }
+  const R = idx.map(i => calc(saved[i].state));
+  const n = (v, d = 1) => v == null || !isFinite(v) ? '' : v.toFixed(d).replace('.', ',');
+  const q = t => '"' + String(t).replace(/"/g, '""') + '"';
+  const today = new Date().toLocaleDateString('ru-RU');
+  const L = [];
+  L.push([q(`Сравнение формул цены: ${PN[cprod]}, ${R[0] ? saved[idx[0]].state.dtype : ''} граница Хэйхэ, 2026`)]);
+  L.push([q(`Выгрузка ${today}. Цены — $/т без НДС и пошлины КНР; «за вычетом пошлины» — минус экспортная пошлина РФ (${cprod === 'p' ? 'ставка на СПБТ' : 'ставка на бутан'}). Разница — к первому варианту.`)]);
+  L.push([]);
+  L.push(['Вариант', 'Состав формулы', 'Средняя цена, $/т', 'За вычетом эксп. пошлины РФ, $/т', 'Разница к первому, $/т', 'Разница к первому, %', 'Месяцев с ценой'].map(q));
+  idx.forEach((i, k) => { const a = R[k].avg.usd, b = R[0].avg.usd, d = k && a != null && b != null ? a - b : null;
+    L.push([q(saved[i].name), q(describe(saved[i].state)), n(a), n(R[k].avg.net), k ? n(d) : 'база', k && d != null && b ? n(d / b * 100) : '', R[k].n]); });
+  const tbl = (title, key) => {
+    L.push([]); L.push([q(title)]);
+    L.push([q('Месяц')].concat(idx.map(i => q(saved[i].name))));
+    MS.forEach((m, j) => L.push([q(`${m} ${DATA.year}`)].concat(R.map(r => n(r.rows[j][key])))));
+    L.push([q('Среднее')].concat(R.map(r => n(r.avg[key]))));
+  };
+  tbl('Цена по месяцам, $/т', 'usd'); tbl('За вычетом экспортной пошлины РФ, $/т', 'net'); tbl('Цена по месяцам, юаней/т', 'cny');
+  L.push([]); L.push([q('* Экспортная пошлина РФ вычитается помесячно — ставка своего месяца (пропан — ставка на СПБТ, бутан — 90% от нее); в месяцы с нулевой ставкой цена за вычетом пошлины равна цене. Среднее — по месяцам, где есть и цена, и ставка.')]); L.push([q(DATA.note)]);
+  const csv = '\ufeff' + L.map(r => r.join(';')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `Сравнение формул — ${PN[cprod]} — ${today}.csv`; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  $('expmsg').textContent = `Скачан файл: ${idx.length} вариант(а/ов). Откройте его в Excel.`;
+}
+$('expbtn').onclick = () => exportCmp();
 let cprod = 'p';
 const syncC = seg('cprod', [['p', 'Пропан'], ['b', 'Бутан']], () => cprod, v => cprod = v, () => drawCmp());
 function drawCmp() {
@@ -413,13 +450,14 @@ function drawCmp() {
   $('vlist').innerHTML = idx.map((i, k) => {
     const r = R[k], d = k && r.avg.usd != null && base != null ? r.avg.usd - base : null;
     return `<div class="v"><i class="sw" style="background:${VCOL[k % 8]}"></i>
-      <div><input type="text" data-i="${i}" value="${esc(saved[i].name)}"><div class="what">${esc(describe(saved[i].state))}</div></div>
-      <div class="nums"><b>${fmt(r.avg.usd, 1)}</b> $/т<div>без пошлины ${fmt(r.avg.net, 1)}</div><div>${k ? (d == null ? '—' : (d >= 0 ? '+' : '−') + fmt(Math.abs(d), 1) + ' к первому') : 'первый'}</div>
+      <div><input type="text" data-i="${i}" value="${esc(saved[i].name)}"><div class="what">${esc(describe(saved[i].state))}</div><label class="ck"><input type="checkbox" data-x="${i}"${saved[i].noexp ? '' : ' checked'}> в выгрузку</label></div>
+      <div class="nums"><b>${fmt(r.avg.usd, 1)}</b> $/т<div>за вычетом эксп. пошлины РФ* ${fmt(r.avg.net, 1)}</div><div>${k ? (d == null ? '—' : (d >= 0 ? '+' : '−') + fmt(Math.abs(d), 1) + ' к первому') : 'первый'}</div>
         <div class="btns"><button data-up="${i}" title="Выше"${k === 0 ? ' disabled' : ''}>↑</button><button data-dn="${i}" title="Ниже"${k === idx.length - 1 ? ' disabled' : ''}>↓</button><button data-o="${i}">Открыть</button><button data-d="${i}">Удалить</button></div></div></div>`;
   }).join('');
   $('cmphint').textContent = `Средние за месяцы с ценой (${R.map(r => r.n).join(', ')} мес.). Разница — к первому варианту; порядок меняется стрелками ↑ ↓ (он же действует на вкладке «Выручка»). «Открыть» — загрузить в «Расчет», поправить и сохранить как новый.`;
   $('vlist').querySelectorAll('input').forEach(el => el.onchange = () => { saved[+el.dataset.i].name = el.value.trim() || 'Вариант'; persist(); drawCmp(); });
   $('vlist').querySelectorAll('button[data-d]').forEach(b => b.onclick = () => { saved.splice(+b.dataset.d, 1); persist(); drawCmp(); });
+  $('vlist').querySelectorAll('input[data-x]').forEach(el => el.onchange = () => { saved[+el.dataset.x].noexp = !el.checked; persist(); });
   $('vlist').querySelectorAll('button[data-up]').forEach(b => b.onclick = () => { moveVar(+b.dataset.up, -1); drawCmp(); });
   $('vlist').querySelectorAll('button[data-dn]').forEach(b => b.onclick = () => { moveVar(+b.dataset.dn, 1); drawCmp(); });
   $('vlist').querySelectorAll('button[data-o]').forEach(b => b.onclick = () => { const st = JSON.parse(JSON.stringify(saved[+b.dataset.o].state)); drafts[st.prod] = st; state = st; syncInputs(); setTab('calc'); render(); });
