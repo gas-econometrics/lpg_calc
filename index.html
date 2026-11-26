@@ -41,6 +41,17 @@ input[type=number] { font-variant-numeric: tabular-nums; }
 .comp { display: grid; grid-template-columns: minmax(0, 1fr) 90px 124px 34px; gap: 8px 10px; align-items: end; padding: 12px 14px; margin-bottom: 10px; border: 1px solid var(--grid); border-radius: 12px; background: #fcfdff; }
 .comp select { width: 100%; }
 .comp input { width: 100%; }
+.combo { position: relative; }
+.combo input { width: 100%; padding-right: 30px; }
+.combo::after { content: "⌕"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 16px; }
+.dd { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); max-height: 320px; overflow-y: auto; background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(16,40,70,0.18), 0 0 0 1px rgba(16,40,70,0.08); padding: 6px; }
+.dd[hidden] { display: none; }
+.dd .g { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 4px; }
+.dd .o { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; line-height: 1.3; }
+.dd .o small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.dd .o.on, .dd .o:hover { background: var(--blue-l); }
+.dd .o mark { background: #fff1a8; color: inherit; border-radius: 2px; }
+.dd .none { padding: 10px; color: var(--muted); font-size: 13px; }
 .comp .x { border: 0; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0 0 8px; border-radius: 8px; }
 .comp .x:hover { color: var(--warn); }
 .comp .info { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
@@ -119,7 +130,7 @@ footer p { margin: 0 0 4px; }
 <body>
 <div class="hero"><div class="in">
   <h1>Цена СУГ по формуле</h1>
-  <div class="sub">Цена = [вес1 × (котировка1 − Дифф.1) + …] / K1. Пропан считается только по котировкам пропана, бутан — только по котировкам бутана.</div>
+  <div class="sub">Цена = [вес1 × (котировка1 − Дифф.1) + …] / K1. Пропан считается только по котировкам пропана, бутан — по котировкам бутана или LPG.</div>
 </div></div>
 <div class="wrap">
 
@@ -203,21 +214,45 @@ const $ = id => document.getElementById(id);
 const fmt = (v, d = 0) => v == null || !isFinite(v) ? '—' : v.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const SRCORD = ['SCI', 'Oilchem', 'Argus AFEI'];
+const ALLOW = { p: ['пропан'], b: ['бутан', 'LPG'] };
+const norm = t => String(t || '').toLowerCase().replace(/\u0451/g, 'е');
 function qlabel(c) {
-  const id = c.src === 'SCI' && /^\d+$/.test(c.id) ? ` · ${c.id}` : '';
-  return c.src === 'Argus AFEI' ? `AFEI ${c.prod} (CFR, до растаможки)` : `${c.typ === 'Market' ? 'Рынок' : 'Заводы'}: ${c.point}${id}`;
+  if (c.src === 'Argus AFEI') return `AFEI ${c.prod} — CFR Дальний Восток, до растаможки`;
+  const sid = c.src === 'SCI' && /^\d+$/.test(c.id) ? `, ID ${c.id}` : '';
+  const pre = { LPG: 'LPG: ', 'бутан': 'Бутан: ' }[c.prod] || '';
+  const m = /среднее по заводам \((\d+)\)/.exec(c.desc || '');
+  const avg = m ? `, среднее по ${m[1]} ${m[1] === '1' ? 'заводу' : 'заводам'}` : '';
+  return `${pre}${c.point} — ${c.src}, ${c.typ === 'Market' ? 'рынок' : 'заводы'}${avg}${sid}`;
 }
-function options(p, cur) {
-  return SRCORD.map(src => {
-    const items = CAT.filter(c => c.src === src && c.prod === PN[p]).sort((a, b) => (a.typ === b.typ ? 0 : a.typ === 'Market' ? -1 : 1) || a.point.localeCompare(b.point, 'ru'));
-    if (!items.length) return '';
-    return `<optgroup label="${src === 'Argus AFEI' ? 'Argus' : src}">` + items.map(c => `<option value="${c.id}"${c.id === cur ? ' selected' : ''}>${esc(qlabel(c))}</option>`).join('') + '</optgroup>';
-  }).join('');
+function quotesFor(p) {
+  return CAT.filter(c => ALLOW[p].includes(c.prod)).sort((a, b) => (ALLOW[p].indexOf(a.prod) - ALLOW[p].indexOf(b.prod)) || (SRCORD.indexOf(a.src) - SRCORD.indexOf(b.src)) || ((a.typ === 'Market' ? 0 : 1) - (b.typ === 'Market' ? 0 : 1)) || a.point.localeCompare(b.point, 'ru'));
+}
+const hay = c => norm(`${qlabel(c)} ${c.desc || ''} ${c.prov || ''} ${c.id} ${c.src === 'Argus AFEI' ? 'afei argus cfr' : ''}`);
+function hl(text, toks) { let t = esc(text); toks.forEach(k => { if (!k) return; const i = norm(t).indexOf(k); if (i >= 0) t = t.slice(0, i) + '<mark>' + t.slice(i, i + k.length) + '</mark>' + t.slice(i + k.length); }); return t; }
+function openDD(inp) {
+  const p = state.prod, toks = norm(inp.value).split(/\s+/).filter(x => x);
+  const curLabel = BYID[state.comps[+inp.dataset.i].id] ? qlabel(BYID[state.comps[+inp.dataset.i].id]) : '';
+  const all = quotesFor(p), list = (inp.dataset.typed === '1' && toks.length) ? all.filter(c => toks.every(k => hay(c).includes(k))) : all;
+  const dd = inp.parentNode.querySelector('.dd');
+  if (!list.length) { dd.innerHTML = '<div class="none">Ничего не найдено. Попробуйте город, завод или номер SCI.</div>'; dd.hidden = false; return; }
+  let h = '', grp = '';
+  list.slice(0, 80).forEach((c, k) => {
+    const g = `${c.prod === 'LPG' ? 'LPG · ' : ''}${c.src === 'Argus AFEI' ? 'Argus' : c.src}`;
+    if (g !== grp) { h += `<div class="g">${g}</div>`; grp = g; }
+    h += `<div class="o${k === 0 && inp.dataset.typed === '1' ? ' on' : ''}${qlabel(c) === curLabel ? ' on' : ''}" data-id="${c.id}">${hl(qlabel(c), toks)}<small>${esc(c.desc || '')}</small></div>`;
+  });
+  if (list.length > 80) h += `<div class="none">Показаны 80 из ${list.length} — уточните поиск.</div>`;
+  dd.innerHTML = h; dd.hidden = false;
+  dd.querySelectorAll('.o').forEach(o => o.addEventListener('pointerdown', e => { e.preventDefault(); pick(inp, o.dataset.id); }));
+}
+function pick(inp, id) {
+  const cp = state.comps[+inp.dataset.i]; cp.id = id; cp.diff = BYID[id] && BYID[id].src === 'Argus AFEI' ? 0 : null;
+  inp.blur(); render();
 }
 function shortName(id) {
   const c = BYID[id]; if (!c) return '?';
   if (c.src === 'Argus AFEI') return 'AFEI';
-  const pt = c.point.split(':')[0];
+  const pt = (c.prod === 'LPG' ? 'LPG ' : '') + c.point.split(':')[0];
   return c.src === 'SCI' && /^\d+$/.test(c.id) ? `SCI ${c.id} (${pt})` : `${c.src} ${c.typ === 'Market' ? 'рынок' : 'заводы'} ${pt}`;
 }
 const OIL = (typ, prod, point) => (CAT.find(c => c.src === 'Oilchem' && c.typ === typ && c.prod === prod && c.point === point) || {}).id;
@@ -288,26 +323,36 @@ function syncInputs() { $('duty').value = state.duty; $('vat').value = state.vat
 
 function drawComps() {
   $('comps').innerHTML = state.comps.map((cp, i) => {
-    const c = BYID[cp.id] || {}, auto = autoDiff(cp.id, state);
-    const where = c.src === 'Argus AFEI' ? 'пункта нет — Дифф. впишите сами (по умолчанию 0)' : `Дифф. авто: транспорт Хэйхэ → ${c.prov === 'Шаньдун' ? (state.sdpt.startsWith('Цзыбо') ? 'Цзыбо' : 'Циндао') : c.tp}`;
+    const c = BYID[cp.id] || {}, auto = cp.id ? autoDiff(cp.id, state) : null;
+    const where = !cp.id ? 'выберите котировку' : c.src === 'Argus AFEI' ? 'пункта нет — Дифф. впишите сами (по умолчанию 0)' : `Дифф. авто: транспорт Хэйхэ → ${c.prov === 'Шаньдун' ? (state.sdpt.startsWith('Цзыбо') ? 'Цзыбо' : 'Циндао') : c.tp}`;
     return `<div class="comp">
-      <div class="qfield"><span class="lbl">Котировка ${i + 1}</span><select data-i="${i}" data-k="id">${options(state.prod, cp.id)}</select></div>
+      <div class="qfield"><span class="lbl">Котировка ${i + 1}</span><div class="combo"><input type="text" class="qin" data-i="${i}" value="${esc(c.id ? qlabel(c) : '')}" placeholder="Начните вводить: город, завод или ID SCI" autocomplete="off" spellcheck="false"><div class="dd" hidden></div></div></div>
       <div class="wfield"><span class="lbl">Вес</span><input type="number" step="0.05" min="0" max="1" data-i="${i}" data-k="w" value="${cp.w}" inputmode="decimal"></div>
       <div class="dfield"><span class="lbl">Дифф., юаней/т</span><input type="number" step="10" data-i="${i}" data-k="diff" value="${cp.diff != null ? cp.diff : ''}" placeholder="${auto == null ? 'нет данных' : 'авто ' + fmt(auto)}" inputmode="decimal"></div>
       <button class="x" data-del="${i}" title="Убрать">×</button>
       <div class="info">${esc(c.desc || '')}${c.desc ? ' · ' : ''}${where}</div></div>`;
   }).join('');
-  $('comps').querySelectorAll('select, input').forEach(el => el.onchange = () => {
+  $('comps').querySelectorAll('input.qin').forEach(inp => {
+    inp.addEventListener('focus', () => { inp.dataset.typed = '0'; inp.select(); openDD(inp); });
+    inp.addEventListener('input', () => { inp.dataset.typed = '1'; openDD(inp); });
+    inp.addEventListener('keydown', e => {
+      const dd = inp.parentNode.querySelector('.dd'), os = [...dd.querySelectorAll('.o')]; let k = os.findIndex(o => o.classList.contains('on'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); os.forEach(o => o.classList.remove('on')); k = Math.max(0, Math.min(os.length - 1, k + (e.key === 'ArrowDown' ? 1 : -1))); if (os[k]) { os[k].classList.add('on'); os[k].scrollIntoView({ block: 'nearest' }); } }
+      else if (e.key === 'Enter') { e.preventDefault(); const o = os[k >= 0 ? k : 0]; if (o) pick(inp, o.dataset.id); }
+      else if (e.key === 'Escape') { inp.blur(); }
+    });
+    inp.addEventListener('blur', () => { setTimeout(() => { const dd = inp.parentNode && inp.parentNode.querySelector('.dd'); if (dd) dd.hidden = true; const c = BYID[state.comps[+inp.dataset.i].id]; inp.value = c ? qlabel(c) : ''; }, 120); });
+  });
+  $('comps').querySelectorAll('input:not(.qin)').forEach(el => el.onchange = () => {
     const cp = state.comps[+el.dataset.i], k = el.dataset.k;
-    if (k === 'id') { cp.id = el.value; cp.diff = BYID[cp.id] && BYID[cp.id].src === 'Argus AFEI' ? 0 : null; }
-    else if (k === 'w') cp.w = +el.value || 0;
+    if (k === 'w') cp.w = +el.value || 0;
     else cp.diff = el.value === '' ? null : +el.value;
     render();
   });
   $('comps').querySelectorAll('button[data-del]').forEach(b => b.onclick = () => { state.comps.splice(+b.dataset.del, 1); render(); });
   $('addc').style.display = state.comps.length >= 4 ? 'none' : '';
 }
-$('addc').onclick = () => { const first = CAT.find(c => c.src === 'SCI' && c.prod === PN[state.prod]); state.comps.push({ id: first.id, w: 0, diff: null }); render(); };
+$('addc').onclick = () => { state.comps.push({ id: '', w: 0, diff: null }); render(); const ins = $('comps').querySelectorAll('input.qin'); ins[ins.length - 1].focus(); };
 
 function lineChart(svgId, legId, series, W, H) {
   const ml = 46, mr = 10, mt = 14, mb = 26;
