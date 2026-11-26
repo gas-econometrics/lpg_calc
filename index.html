@@ -107,7 +107,10 @@ details.more summary { color: var(--blue-d); font-size: 14px; font-weight: 600; 
 .voltab input { width: 72px; padding: 7px; }
 .rev .r { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 11px 0; border-bottom: 1px solid var(--grid); }
 .rev .r:last-child { border-bottom: 0; }
-.rev .r .n { font-weight: 600; }
+.rev .r .n { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.mv { display: inline-flex; gap: 3px; flex: none; }
+.mv button, .vlist .btns button[data-up], .vlist .btns button[data-dn] { border: 0; background: var(--blue-l); color: var(--blue-d); border-radius: 7px; width: 28px; height: 28px; padding: 0; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.mv button:disabled, .vlist .btns button:disabled { opacity: .35; cursor: default; }
 .rev .r .a { text-align: right; font-variant-numeric: tabular-nums; }
 .rev .r .a b { font-size: 17px; }
 .rev .r .d { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink2); }
@@ -395,6 +398,10 @@ $('savebtn').onclick = () => {
   persist(); $('vname').value = ''; $('savedmsg').textContent = 'Сохранено — см. вкладку «Сравнение».'; $('ncmp').textContent = `(${saved.length})`;
 };
 
+function moveVar(i, dir) {
+  const p = saved[i].state.prod, idx = saved.map((v, k) => k).filter(k => saved[k].state.prod === p), pos = idx.indexOf(i), j = idx[pos + dir];
+  if (j == null) return; [saved[i], saved[j]] = [saved[j], saved[i]]; persist();
+}
 let cprod = 'p';
 const syncC = seg('cprod', [['p', 'Пропан'], ['b', 'Бутан']], () => cprod, v => cprod = v, () => drawCmp());
 function drawCmp() {
@@ -408,11 +415,13 @@ function drawCmp() {
     return `<div class="v"><i class="sw" style="background:${VCOL[k % 8]}"></i>
       <div><input type="text" data-i="${i}" value="${esc(saved[i].name)}"><div class="what">${esc(describe(saved[i].state))}</div></div>
       <div class="nums"><b>${fmt(r.avg.usd, 1)}</b> $/т<div>без пошлины ${fmt(r.avg.net, 1)}</div><div>${k ? (d == null ? '—' : (d >= 0 ? '+' : '−') + fmt(Math.abs(d), 1) + ' к первому') : 'первый'}</div>
-        <div class="btns"><button data-o="${i}">Открыть</button><button data-d="${i}">Удалить</button></div></div></div>`;
+        <div class="btns"><button data-up="${i}" title="Выше"${k === 0 ? ' disabled' : ''}>↑</button><button data-dn="${i}" title="Ниже"${k === idx.length - 1 ? ' disabled' : ''}>↓</button><button data-o="${i}">Открыть</button><button data-d="${i}">Удалить</button></div></div></div>`;
   }).join('');
-  $('cmphint').textContent = `Средние за месяцы с ценой (${R.map(r => r.n).join(', ')} мес.). «Открыть» — загрузить в «Расчет», поправить и сохранить как новый.`;
+  $('cmphint').textContent = `Средние за месяцы с ценой (${R.map(r => r.n).join(', ')} мес.). Разница — к первому варианту; порядок меняется стрелками ↑ ↓ (он же действует на вкладке «Выручка»). «Открыть» — загрузить в «Расчет», поправить и сохранить как новый.`;
   $('vlist').querySelectorAll('input').forEach(el => el.onchange = () => { saved[+el.dataset.i].name = el.value.trim() || 'Вариант'; persist(); drawCmp(); });
   $('vlist').querySelectorAll('button[data-d]').forEach(b => b.onclick = () => { saved.splice(+b.dataset.d, 1); persist(); drawCmp(); });
+  $('vlist').querySelectorAll('button[data-up]').forEach(b => b.onclick = () => { moveVar(+b.dataset.up, -1); drawCmp(); });
+  $('vlist').querySelectorAll('button[data-dn]').forEach(b => b.onclick = () => { moveVar(+b.dataset.dn, 1); drawCmp(); });
   $('vlist').querySelectorAll('button[data-o]').forEach(b => b.onclick = () => { const st = JSON.parse(JSON.stringify(saved[+b.dataset.o].state)); drafts[st.prod] = st; state = st; syncInputs(); setTab('calc'); render(); });
   lineChart('chart2', 'legend2', idx.map((i, k) => ({ name: saved[i].name, v: R[k].rows.map(r => r.usd), c: VCOL[k % 8], w: k ? 2 : 3 })), 900, 300);
   let m = '<tr><th>Месяц</th>' + idx.map((i, k) => `<th>${esc(saved[i].name)}</th>`).join('') + '</tr>';
@@ -433,7 +442,8 @@ function drawRev() {
   $('volall').value = V[0];
   $('voltab').innerHTML = '<tr>' + MS.map(m => `<th>${m.slice(0, 3).toLowerCase()}</th>`).join('') + '<th>Всего</th></tr><tr>' + V.map((v, i) => `<td><input type="number" step="100" min="0" data-m="${i}" value="${v}" inputmode="decimal"></td>`).join('') + `<td class="b">${fmt(V.reduce((a, b) => a + b, 0))}</td></tr>`;
   $('voltab').querySelectorAll('input').forEach(el => el.onchange = () => { V[+el.dataset.m] = +el.value || 0; saveVols(); drawRev(); });
-  const F = [{ name: 'Текущая формула («Расчет»)', st: drafts[rprod] }].concat(saved.filter(v => v.state.prod === rprod).map(v => ({ name: v.name, st: v.state }))).map(f => Object.assign(f, { r: calc(f.st) }));
+  const F = saved.map((v, i) => ({ i, name: v.name, st: v.state })).filter(f => f.st.prod === rprod).map(f => Object.assign(f, { r: calc(f.st) }));
+  if (!F.length) { $('revtitle').textContent = `Выручка: ${PN[rprod]}`; $('revlist').innerHTML = `<div class="hint">Нет сохраненных вариантов для продукта «${PN[rprod]}». Сохраните формулу на вкладке «Расчет».</div>`; $('revnote').textContent = ''; return; }
   const ok = MS.map((_, m) => F.every(f => f.r.rows[m].usd != null));
   const T = F.map(f => { let usd = 0, net = 0, cny = 0, vol = 0, n = 0;
     f.r.rows.forEach((x, m) => { if (!(V[m] > 0) || x.usd == null || (revMode === 'common' && !ok[m])) return; usd += V[m] * x.usd; net += V[m] * (x.net != null ? x.net : x.usd); cny += V[m] * (x.cny || 0); vol += V[m]; n++; });
@@ -441,11 +451,13 @@ function drawRev() {
   const b = T[0], mx = Math.max(...T.map(t => t.usd), 1);
   $('revtitle').textContent = `Выручка: ${PN[rprod]}`;
   $('revlist').innerHTML = T.map((t, i) => { const d = t.usd - b.usd, p = b.usd ? d / b.usd * 100 : null;
-    return `<div class="r"><div class="n">${esc(t.name)}</div><div class="a"><b>${fmt(t.usd / 1e6, 2)}</b> млн $</div>
-      <div class="d">${i ? `${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))} $ (${p == null ? '—' : (p >= 0 ? '+' : '−') + fmt(Math.abs(p), 1) + '%'}) к текущей · ` : 'база · '}без пошлины ${fmt(t.net / 1e6, 2)} млн $ · ${fmt(t.cny / 1e6, 1)} млн юаней · ${fmt(t.vol)} т, ${t.n} мес., ${fmt(t.vol ? t.usd / t.vol : null, 1)} $/т</div>
+    return `<div class="r"><div class="n"><span class="mv"><button data-up="${F[i].i}"${i === 0 ? ' disabled' : ''} title="Выше">↑</button><button data-dn="${F[i].i}"${i === T.length - 1 ? ' disabled' : ''} title="Ниже">↓</button></span>${esc(t.name)}</div><div class="a"><b>${fmt(t.usd / 1e6, 2)}</b> млн $</div>
+      <div class="d">${i ? `${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))} $ (${p == null ? '—' : (p >= 0 ? '+' : '−') + fmt(Math.abs(p), 1) + '%'}) к первому · ` : 'база (первый) · '}без пошлины ${fmt(t.net / 1e6, 2)} млн $ · ${fmt(t.cny / 1e6, 1)} млн юаней · ${fmt(t.vol)} т, ${t.n} мес., ${fmt(t.vol ? t.usd / t.vol : null, 1)} $/т</div>
       <div class="bar${i ? '' : ' base'}" style="width:${Math.max(1, t.usd / mx * 100)}%"></div></div>`; }).join('');
+  $('revlist').querySelectorAll('button[data-up]').forEach(b => b.onclick = () => { moveVar(+b.dataset.up, -1); drawRev(); });
+  $('revlist').querySelectorAll('button[data-dn]').forEach(b => b.onclick = () => { moveVar(+b.dataset.dn, 1); drawRev(); });
   const sk = MS.filter((_, m) => V[m] > 0 && !ok[m]);
-  $('revnote').textContent = (revMode === 'common' ? (sk.length ? `Не вошли месяцы без цены у какого-то варианта: ${sk.join(', ').toLowerCase()}.` : 'Все месяцы с объемом вошли в расчет.') : 'У каждого варианта — все его месяцы с ценой.') + ` Сравниваются текущая формула вкладки «Расчет» (${PN[rprod]}) и сохраненные варианты.`;
+  $('revnote').textContent = (revMode === 'common' ? (sk.length ? `Не вошли месяцы без цены у какого-то варианта: ${sk.join(', ').toLowerCase()}.` : 'Все месяцы с объемом вошли в расчет.') : 'У каждого варианта — все его месяцы с ценой.') + ` Сравниваются сохраненные варианты (${PN[rprod]}); разница — к первому, порядок меняется стрелками ↑ ↓.`;
 }
 
 function setTab(t) {
